@@ -1,4 +1,4 @@
-name: Java CI with Coverage → Publish to /docs
+name: Java CI with Maven, JaCoCo and GitHub Pages
 
 on:
   push:
@@ -6,62 +6,55 @@ on:
   pull_request:
     branches: [ "main" ]
 
-# Требуются права на запись в репозиторий (для коммита в main)
 permissions:
-  contents: write
-  pages: write
-  id-token: write
+  contents: write  # требуется для коммита отчёта обратно в main
 
 jobs:
-  build-and-publish-coverage:
+  build-test-coverage:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}  # нужен для push от имени GitHub Actions
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
+          cache: 'maven'  # кэширует ~/.m2/repository между запусками
 
-      - name: Download JUnit and JaCoCo
-        run: |
-          mkdir -p tools
-          curl -L https://repo1.maven.org/maven2/org/junit/platform/junit-platform-console-standalone/1.9.3/junit-platform-console-standalone-1.9.3.jar \
-               -o tools/junit-platform-console.jar
-          curl -L https://repo1.maven.org/maven2/org/jacoco/jacoco/0.8.10/jacoco-0.8.10.zip \
-               -o tools/jacoco.zip
-          unzip tools/jacoco.zip -d tools/
+      - name: Build project and run tests with Maven
+        run: mvn -B clean test
 
-      - name: Compile source and test code
-        run: |
-          mkdir -p build/classes
-          javac -d build/classes src/*.java test/*.java
+      - name: Generate JaCoCo coverage report
+        run: mvn -B jacoco:report
 
-      - name: Run tests with JaCoCo coverage
+      - name: Verify coverage report exists
         run: |
-          java \
-            -javaagent:tools/jacoco-0.8.10/lib/jacocoagent.jar=destfile=build/jacoco.exec \
-            -cp "build/classes:tools/junit-platform-console.jar" \
-            org.junit.platform.console.ConsoleLauncher \
-            --select-class=AIAgentTest \
-            --details=summary
+          if [ ! -f "target/site/jacoco/index.html" ]; then
+            echo "❌ JaCoCo report not found!"
+            exit 1
+          fi
+          echo "✅ JaCoCo report generated successfully."
 
-      - name: Generate JaCoCo HTML report to /docs
+      - name: Publish coverage report to /docs in main branch
         run: |
+          # Копируем отчёт в docs/
           mkdir -p docs
-          java -jar tools/jacoco-0.8.10/lib/jacococli.jar report build/jacoco.exec \
-            --classfiles build/classes \
-            --sourcefiles src \
-            --html docs
-
-      - name: Commit and push coverage report to main
-        run: |
+          cp -r target/site/jacoco/* docs/
+          
+          # Настраиваем Git
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          
+          # Добавляем и коммитим только если есть изменения
           git add docs/
-          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: update coverage report [skip ci]") && git push
+          if ! git diff --quiet --cached; then
+            git commit -m "chore: update coverage report [skip ci]"
+            git push
+          else
+            echo "ℹ️ No changes in coverage report. Skipping commit."
+          fi
