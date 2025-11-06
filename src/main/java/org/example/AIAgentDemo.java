@@ -18,8 +18,11 @@ public class AIAgentDemo {
     // Простой рефлексивный агент
     public static class SimpleReflexAgent {
         public Action decide(RoomState percept) {
-// 🐞 БАГ: агент всегда ничего не делает!
-            return Action.NOOP;
+            if (percept == RoomState.DIRTY) {
+                return Action.CLEAN;
+            } else {
+                return Action.NOOP;
+            }
         }
     }
 
