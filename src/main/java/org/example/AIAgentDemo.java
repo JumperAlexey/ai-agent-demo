@@ -24,6 +24,7 @@ public class AIAgentDemo {
                 return Action.NOOP;
             }
         }
+    }
 
     // Окружение (модель мира)
     public static class Environment {
